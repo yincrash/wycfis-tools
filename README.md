@@ -11,7 +11,7 @@ pages headlessly and turn the results into CSVs anyone can analyze.
 
 | Script | Output |
 |---|---|
-| `fetch_reports.py <year>` | Every filed report's summary PDF (candidate/committee identity, office sought, report totals) plus an index CSV |
+| `fetch_reports.py <year>` | Every filed report's summary PDF (filer identity, office sought, report totals) plus an index CSV. `--tab pacs`, `--tab organizations`, and `--tab parties` cover the non-candidate filers |
 | `reports_to_csv.py out/<year>` | One CSV row per filed report: filer, office, period, date filed, total contributions, total expenditures, carried-forward (cash on hand) |
 | `fetch_exports.py contributions <year>` | WYCFIS's own itemized contributions export (every disclosed contribution: donor, recipient, type, date, amount) |
 | `fetch_exports.py expenditures <year>` | Itemized expenditures export (payee, purpose, date, amount) |
@@ -26,12 +26,16 @@ pip install requests beautifulsoup4 pdfplumber
 
 ```bash
 # 1. download all filed report summaries for the 2026 cycle (~15 min for ~300 reports)
-python3 fetch_reports.py 2026
+python3 fetch_reports.py 2026                      # candidates -> out/2026/candidates
+python3 fetch_reports.py 2026 --tab pacs           # -> out/2026/pacs
+python3 fetch_reports.py 2026 --tab organizations
+python3 fetch_reports.py 2026 --tab parties
 
-# 2. convert the PDFs into a single CSV
-python3 reports_to_csv.py out/2026
+# 2. convert each set of PDFs into a CSV
+python3 reports_to_csv.py out/2026/candidates
+python3 reports_to_csv.py out/2026/pacs
 
-# 3. itemized money, straight from WYCFIS's export buttons
+# 3. itemized money, straight from WYCFIS's export buttons (candidate money)
 python3 fetch_exports.py contributions 2026 -o out/2026/contributions.csv
 python3 fetch_exports.py expenditures  2026 -o out/2026/expenditures.csv
 ```
@@ -59,6 +63,10 @@ the PDF itself, never from download order, so reports cannot be mis-attributed.
   [sos.wyo.gov](https://sos.wyo.gov/Elections/) is the best join target.
 - Statewide and legislative filings only; county-office reports are filed
   with county clerks and mostly absent from WYCFIS.
+- The political-parties tab returned no filings for the 2026 cycle; the
+  scripts support it anyway in case that changes.
+- The `out/` directory in this repo is a snapshot pulled during the 2026
+  primary; rerun the scripts for current data.
 
 ## Legal notice
 

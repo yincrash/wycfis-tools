@@ -11,7 +11,8 @@ leaves a consistent index. Re-running skips files already in the index.
 
 Usage:
   python3 fetch_reports.py 2026                    # candidates (default tab)
-  python3 fetch_reports.py 2026 --out out/2026     # choose output directory
+  python3 fetch_reports.py 2026 --tab pacs         # PACs, organizations, parties
+  python3 fetch_reports.py 2026 --out out/2026/x   # choose output directory
   python3 fetch_reports.py 2026 --max-pages 1      # smoke test: first page only
 """
 import argparse
@@ -19,6 +20,14 @@ import csv
 import os
 
 import wycfis
+
+# tab -> (menu index on the Search Filed Reports page, election-year field name)
+TABS = {
+    "candidates": (None, "ctl00$BodyContent$txtElectionYear"),
+    "pacs": ("1", "ctl00$BodyContent$txtElectionYearPAC"),
+    "organizations": ("2", "ctl00$BodyContent$txtElectionYearORG"),
+    "parties": ("3", "ctl00$BodyContent$txtElectionYearPC"),
+}
 
 
 def grid_rows(soup):
@@ -40,11 +49,14 @@ def grid_rows(soup):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("year", help="election year cycle, e.g. 2026 (covers the prior odd year too)")
-    ap.add_argument("--out", default=None, help="output directory (default out/<year>)")
+    ap.add_argument("--tab", default="candidates", choices=sorted(TABS),
+                    help="which filer type to download (default candidates)")
+    ap.add_argument("--out", default=None, help="output directory (default out/<year>/<tab>)")
     ap.add_argument("--max-pages", type=int, default=None, help="stop after N grid pages (testing)")
     args = ap.parse_args()
 
-    outdir = args.out or os.path.join("out", str(args.year))
+    outdir = args.out or os.path.join("out", str(args.year), args.tab)
+    tab_index, year_field = TABS[args.tab]
     pdf_dir = os.path.join(outdir, "report_pdfs")
     os.makedirs(pdf_dir, exist_ok=True)
     index_path = os.path.join(outdir, "report_index.csv")
@@ -66,9 +78,13 @@ def main():
     s = wycfis.new_session()
     r = s.get(wycfis.SEARCH_FILING_URL, timeout=60)
     soup = wycfis.soup_of(r)
+    if tab_index is not None:
+        r = wycfis.postback(s, wycfis.SEARCH_FILING_URL, soup,
+                            "ctl00$BodyContent$mnuFilingReports", tab_index)
+        soup = wycfis.soup_of(r)
     r = wycfis.submit(s, wycfis.SEARCH_FILING_URL, soup,
                       "ctl00$BodyContent$btnSearch",
-                      extra={"ctl00$BodyContent$txtElectionYear": str(args.year)})
+                      extra={year_field: str(args.year)})
     soup = wycfis.soup_of(r)
 
     page, fetched, seen_first = 1, 0, None
@@ -88,7 +104,7 @@ def main():
             fname = f"{wycfis.slugify(row[0])}__{wycfis.slugify(row[3])}__{wycfis.slugify(row[2])}_{ordinal}.pdf"
             r2 = wycfis.postback(s, wycfis.SEARCH_FILING_URL, soup,
                                  "ctl00$BodyContent$gvFilingSearchResult", f"select${i}",
-                                 extra={"ctl00$BodyContent$txtElectionYear": str(args.year)})
+                                 extra={year_field: str(args.year)})
             rv = s.get(wycfis.FILING_VIEWER_URL, timeout=180)
             if not rv.headers.get("Content-Type", "").lower().startswith("application/pdf"):
                 print(f"  !! non-pdf response for {row[0]} ({row[3]}) - skipped")
@@ -107,7 +123,7 @@ def main():
         page += 1
         r = wycfis.postback(s, wycfis.SEARCH_FILING_URL, soup,
                             "ctl00$BodyContent$gvFilingSearchResult", f"Page${page}",
-                            extra={"ctl00$BodyContent$txtElectionYear": str(args.year)})
+                            extra={year_field: str(args.year)})
         soup = wycfis.soup_of(r)
 
     index_f.close()
